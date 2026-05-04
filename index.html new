@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>節約投資アプリ改訂版</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+</head>
+<body>
+
+<div class="wrapper">
+
+    <h1>家 計 分 析 ア プ リ</h1>
+
+    <div class="main-container">
+         <h2>データの登録と分析</h2>
+
+    <div class="box">
+         <h3>1. 月を選んで保存</h3>
+         <input type="month" id="monthSelector" value="2024-04">
+         <br>
+    </div>
+
+    <div style="margin: 15px 0; padding: 12px; border: 2px dashed orange; border-radius: 10px; background: #fff;">
+    <p style="font-size: 18px; color: #555;">選択した月のデータを自動で作ります</p>
+    <button id="calculateBtn" class="btn" style="background-color: orange; color: white; font-size: 20px; width: 300px; padding: 15px;">
+        データを自動生成して保存
+    </button>
+</div>
+
+    <div class="analysis-container">
+    <p id="analysis-link-btn" class="analysis-label disabled-analysis" style="pointer-events: none; opacity: 0.5;">
+        分析レポートを見る
+    </p>
+      <p id="warningMessage" style="color: gray; font-size: 14px;">(12か月以上のデータが必要です)</p>
+    </div>
+    </div>
+
+<style>
+input[type="month"] {
+  margin-bottom: 20px;
+}
+
+h1 {
+ font-size: 45px;
+ color:orange;
+ text-align: center;
+}
+
+h2 {
+  font-size: 30px;
+  color: plum;
+}
+
+h3 {
+  font-size: 24px;
+  color: green;
+}
+
+body {
+  background-color: lightcyan;
+  justify-content: center;
+  align-items: center;
+  margin: 0;
+  height: 100vh;
+}
+
+.wrapper {
+  text-align: center;
+  max-width: 600px; /* 中央のカードの幅を制限 */
+  margin: 0 auto;   /* 画面の真ん中に寄せる */
+  background: white; /* 白いカード状にする */
+  padding: 30px;
+  border-radius: 20px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+}
+
+
+p {
+  font-size: 20px;
+}
+
+button {
+  margin-top: 15px;
+  padding: 12px 24px; /* 少し大きくして押しやすく */
+  font-size: 18px;
+  cursor: pointer;
+  border-radius: 8px;
+  border: none;
+}
+
+.analysis-container {
+  margin-top: 20px;
+  text-align: center;
+}
+
+/* 分析結果の基本スタイル */
+.analysis-label {
+  font-size: 28px;
+  font-weight: bold;
+  cursor: default; /* 初期状態ではクリック不可のカーソル */
+  margin-bottom: 5px;
+  /* color: darkred; <-- 常に有効な色を定義してもいいが、 今回はdisabledが優先 */
+}
+
+/* データ不足時の色とカーソル */
+.disabled-analysis {
+  color: gray; /* 無効時はグレー */
+  pointer-events: none; /* クリック不可 */
+}
+
+/* データが揃った時の色とカーソル */
+.enabled-analysis {
+    color: darkred; /* 有効時は濃い赤 */
+    cursor: pointer; /* クリックできることを示す */
+}
+
+/* 基本は縦並び（スマホ用）*/
+.container {
+    display: flex;
+    flex-direction: column;
+}   
+
+/* 画面幅が768px以上の時だけ横並び（PC用）*/
+@media (min-width: 768px) {
+   .container {
+       flex-direction: row;
+   }
+}
+</style>
+<script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
