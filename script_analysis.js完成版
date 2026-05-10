@@ -1,0 +1,57 @@
+if (!chartDataFromServer.labels || chartDataFromServer.labels.length === 0) {
+    console.error("表示するデータがありません。");
+    // 必要に応じて「データ不足」のメッセージを画面に出す
+}
+
+const ctx1 = document.getElementById('expenseLineChart').getContext('2d');
+
+
+
+new Chart(ctx1, {
+    type: 'line', // 左側：折れ線
+    data: {
+       labels: chartDataFromServer.labels,
+       datasets: [
+        {
+          label: '食費',
+          data: chartDataFromServer.foods,
+          borderColor: 'plum',
+          fill: false
+        },
+
+        {
+          label: '交通費',
+          data:chartDataFromServer.transports,
+          borderColor: 'skyblue',
+          fill: false
+        },
+
+        {
+          label: '趣味',
+          data:chartDataFromServer.hobbies,
+          borderColor: 'lightgreen',
+          fill: false
+        },
+
+        {
+          label: 'その他',
+          data:chartDataFromServer.others,
+          borderColor: 'orange',
+          fill: false
+        },
+
+        {
+        label: '合計支出',
+        data: chartDataFromServer.totals,
+        borderColor: 'pink',
+        borderDash: [5, 5], // 合計だけ点線にすると見やすいです
+        fill: false
+        }
+       ]
+    },
+       
+    options: {
+    responsive: true,
+    maintainAspectRatio: false,
+  }
+});
