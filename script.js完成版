@@ -1,0 +1,166 @@
+// 1. グローバル変数の定義
+let monthlyDataCount = 0; 
+let REQUIRED_MONTHS = 12; 
+
+// 2. 変換関数
+function parseToNumber(value) {
+    let str = String(value || "");
+    str = str.replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 65248)); 
+    const numStr = str.replace(/[^0-9]/g, "");
+    return Number(numStr) || 0; 
+}
+
+// 3. 件数チェックとUI更新関数（独立させて定義）
+async function checkAndEnableAnalysis() { 
+    try {
+        const response = await fetch('/api/get_data_count'); 
+        const data = await response.json();
+
+        monthlyDataCount = data.total_count;
+        console.log("現在のデータ件数:", monthlyDataCount);
+
+        // HTMLのID「analysis-link-btn」に合わせて取得
+        const analysisBtn = document.getElementById('analysis-link-btn');
+        const warningMsg = document.getElementById('warningMessage');
+
+        if (analysisBtn) {
+            if (monthlyDataCount >= REQUIRED_MONTHS) {
+                // 条件達成：有効化
+                analysisBtn.classList.remove('disabled-analysis');
+                analysisBtn.classList.add('enabled-analysis');
+                analysisBtn.style.pointerEvents = 'auto';
+                analysisBtn.style.cursor = 'pointer';
+                analysisBtn.style.opacity = '1';
+                analysisBtn.style.cursor = 'pointer';
+            } else {
+                // 条件未達：無効化
+                analysisBtn.classList.add('disabled-analysis');
+                analysisBtn.classList.remove('enabled-analysis');
+                analysisBtn.style.pointerEvents = 'none';
+                analysisBtn.style.opacity = '0.5';
+                analysisBtn.style.cursor = 'not-allowed';
+            }
+        }
+    } catch (e) {
+        console.error("件数チェックに失敗しました", e);
+    }
+}
+
+// 4. データ更新・保存関数
+async function autoGenerateAndSave() {
+    const btn = document.getElementById('calculateBtn');
+    btn.disabled = true; // ボタンを無効化
+    btn.innerText = "保存中...";
+    // 1. 年月の取得（これだけはユーザーが選択したものを使います）
+    const dataValue = document.getElementById("monthSelector").value;
+
+    if (!dataValue) {
+        alert("年月を選択してください。");
+        // エラーで中断する場合も、ボタンを元に戻す必要があります
+        btn.disabled = false;
+        btn.innerText = "データを自動生成して保存";
+        return;
+    }
+
+    // 2. 数値の自動生成（手入力をやめて、ここでランダムに作ります）
+    // これにより、全角・半角などの入力エラーが一切発生しなくなります
+    const food = Math.floor(Math.random() * 20000) + 30000;  // 3万～5万円
+    const transport =  Math.floor(Math.random() * 5000) + 5000; // 5千~1万円
+    const hobby =  Math.floor(Math.random() * 15000) + 5000; // 5千~2万円
+    const other =  Math.floor(Math.random() * 10000) + 2000; // 2千~1.2万円
+
+    // 3. 送信データの作成
+    const expenseData = {
+        date : dataValue,
+        food : food,
+        transport : transport,
+        hobby : hobby,
+        other : other 
+    };
+
+    try {
+        // 4. Python側のAPIへ送信
+        const response = await fetch('/api/save_expense', {
+            method: 'POST',
+            headers : { 'Content-type': 'application/json'},
+            body: JSON.stringify(expenseData)
+        });
+
+        if (response.ok) {
+            console.log(dataValue + "の保存成功");
+            alert(dataValue + " 分のデータを自動生成して保存しました！");
+
+            // 件数を再確認して「分析レポートを見る」ボタンを更新
+            if (typeof checkAndEnableAnalysis === "function") {
+                checkAndEnableAnalysis();
+            }
+        }
+    } catch (e) {
+        console.error("保存失敗", e);
+        alert("保存に失敗しました。サーバーが起動しているか確認してください。");
+    } finally {
+        btn.disabled = false;
+        btn.innerText = "データを自動生成して保存";
+    }
+}
+
+// 5. 初期化処理
+window.onload = function() {
+    // ページ読み込み時にデータを全削除
+    localStorage.clear();
+    sessionStorage.clear();
+
+const downloadBtn = document.getElementById('downloadBtn');
+    const dummyBtn = document.getElementById('dummyDataBtn');
+    if (dummyBtn) {
+        dummyBtn.addEventListener('click', generateDummyData);
+    }
+
+// 分析ボタンのクリック処理
+    if (downloadBtn) {
+        downloadBtn.addEventListener('click', function() {
+            // サーバー側でExcel生成APIが準備されていれば実行
+            window.location.href = '/api/download-report';
+        });
+    }
+
+    
+    // イベント登録
+    const calculateBtn = document.getElementById('calculateBtn');
+    
+    if (calculateBtn) {
+        calculateBtn.addEventListener('click', autoGenerateAndSave);
+    }
+
+    const analysisBtn = document.getElementById('analysis-link-btn');
+    const warningMsg = document.getElementById('warningMessage');
+
+    if (analysisBtn) {
+        analysisBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+
+    const periodEl = document.getElementById('periodSelector');
+    const years = periodEl ? periodEl.value : 1;
+
+    if (monthlyDataCount < REQUIRED_MONTHS) {
+        // ボタンは押せるけど、足りない時だけ警告を出す
+        alert(`あと ${REQUIRED_MONTHS - monthlyDataCount} ヵ月分のデータが必要です。`);
+        return;
+
+    } else {
+        window.location.href = "/analysis?duration_years=" + years;
+    }
+        });
+    }
+
+    // 最初に一度だけサーバーから現在の件数を取得
+    checkAndEnableAnalysis();
+
+    if (downloadBtn) {
+    downloadBtn.addEventListener('click', function() {
+     // Flaskのダウンロード用URLへリダイレクト（ブラウザがファイルを自動検知します）
+     window.location.href = '/api/download-report';    
+    });
+};
+
+}
