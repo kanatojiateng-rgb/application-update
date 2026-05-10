@@ -1,0 +1,240 @@
+from flask import Flask, render_template, request, jsonify, redirect, url_for
+from flask_sqlalchemy import SQLAlchemy
+import pandas as pd
+import numpy as np
+import json
+
+
+# --- データベース設定 ---
+app = Flask(__name__)
+# データベースファイルを 'spending_data.db' に設定
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + app.root_path + '/spending_data.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+db = SQLAlchemy(app)
+
+# --- データベースのモデル（テーブル構造）の定義 ---
+class MonthlyExpense(db.Model):
+    # テーブル名は 'monthly_expenses'
+    __tablename__ = 'monthly_expenses'
+    # '202401'のような整数、または Date型にして、年月を特定できるようにする
+    year_month = db.Column(db.Integer, primary_key=True)
+    food = db.Column(db.Integer, nullable=False)
+    transport = db.Column(db.Integer, nullable=False)
+    hobby = db.Column(db.Integer, nullable=False)
+    other = db.Column(db.Integer, nullable=False)
+
+# データを辞書型に変換するメソッド（JSON化してフロントに返すため）
+    def to_dict(self):
+        return {
+            'month': self.year_month,
+            'food': self.food,
+            'transport': self.transport,
+            'hobby': self.hobby,
+            'other': self.other,
+    }
+
+
+#1. トップページ/入力フォーム
+@app.route('/')
+def index():
+    # 起動時にデータベースを初期化（テーブルがなければ作成）
+    with app.app_context():
+        db.drop_all()
+        db.create_all()
+    return render_template('index.html')
+
+@app.route('/api/save_expense', methods=['POST'])
+def save_expense():
+    # フロントエンドから送られたJSONデータを受け取る
+    data = request.json
+    date_str = data.get('date') # '2024-04'
+    if not date_str:
+       return jsonify({"success": False, "message": "MIssing data"}), 400
+    
+    try:
+        ym_key = int(date_str.replace('-', ''))
+        expense = db.session.get(MonthlyExpense, ym_key)
+
+
+        if expense is None:
+            #新規作成
+            expense = MonthlyExpense(
+                year_month=ym_key,
+                food=data['food'],
+                transport=data['transport'],
+                hobby=data['hobby'],
+                other=data['other']
+            )
+            db.session.add(expense)
+        else:
+            # 更新
+            expense.food = data['food']
+            expense.transport = data['transport']
+            expense.hobby = data['hobby']
+            expense.other = data['other']
+        
+        db.session.commit()
+
+        # --- ここから「10年制限（120件）」ロジック ---
+        #1. 現在の全件数を取得
+        total_count = MonthlyExpense.query.count()
+
+        #2. 120件を超えていた場合
+        if total_count > 120:
+            #削除すべき件数を計算
+            delete_count = total_count - 120
+
+         # 最も古いデータを「年月（year_month)」順で取得して削除
+            old_records = MonthlyExpense.query.order_by(MonthlyExpense.year_month.asc()).limit(delete_count).all()  
+            for record in old_records:
+                db.session.delete(record)
+            db.session.commit()
+            print(f"{delete_count}件の古いデータを削除しました（10年制限)")
+
+        # 保存されたデータ件数を取得
+        return jsonify({"success": True, "total_count": total_count})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"success": False, "message": str(e)}), 500
+    
+   
+    #ページロード時に現在のデータ件数を取得するためのAPI
+@app.route('/api/get_data_count', methods=['GET'])
+def get_data_count():
+    try:
+            total_count = db.session.query(MonthlyExpense).count()
+            return jsonify({"success": True, "total_count": total_count}), 200
+    except Exception as e:
+            print(f"Error: {e}")
+            return jsonify({"success": False, "message": str(e)}), 500
+
+    
+@app.route('/analysis')
+def analysis():
+    try:
+        # 期間を取得。最大10年に制限。
+        duration_years = int(request.args.get('duration_years', 1))
+        if duration_years > 10:
+            duration_years = 10 #10年(120か月)に制限
+
+
+        limit_months = duration_years * 12
+
+        # データベースから取得する件数を最大120件に絞る
+        all_expenses = MonthlyExpense.query.order_by(MonthlyExpense.year_month.asc()).all()
+        
+        #データが全くない場合の処理
+        if not all_expenses:
+            return "データが登録されていません。 トップページから１か月以上のデータを入力するか、CSVを読み込んでください。"
+        
+        monthly_ratio = 0
+        totals = [e.food + e.transport + e.hobby + e.other for e in all_expenses]
+
+        #各科目のリストを作成
+        foods = [e.food for e in all_expenses]
+        transports = [e.transport for e in all_expenses]
+        hobbies = [e.hobby for e in all_expenses]
+        others = [e.other for e in all_expenses]
+        
+        labels = []
+        for e in all_expenses:
+        # 202404を"24/04" のように「年」も見えるようにする
+         s= str(e.year_month)
+         formatted_date = f"{s[2:4]}/{s[4:6]}"
+         m_str = str(e.year_month)[-2:]
+         labels.append(formatted_date)
+        
+        #2. 平均支出の算出（入力されている全データから算出）    
+        avg_expense = sum(totals) / len(totals)
+        avg_expense_display = f"{round(avg_expense):,}円"
+
+        #　--- シミュレーション計算部分 ---
+        sim_data = []
+        sim_labels = []
+
+        # 4. グラフ用ラベルの作成（１年目、２年目...)
+        sim_labels = [f"{y}年目" for y in range(1, duration_years + 1)]
+        if len(totals) >= 2:
+           current_month_total = totals[-1]
+        
+        # 先月比の割合
+           last_month_total = totals[-2]
+           if last_month_total > 0:
+              monthly_ratio = round(((current_month_total / last_month_total) - 1) * 100, 1)
+           else:
+               monthly_ratio = 0
+
+        # 趣味の分析
+        total_expense_all = sum(totals)
+        total_hobby = sum([e.hobby for e in all_expenses])
+        hobby_ratio = (total_hobby / total_expense_all) * 100 if total_expense_all > 0 else 0
+
+        # 最大支出月の特定
+        max_total = max(totals)
+        max_month_idx = totals.index(max_total)
+        max_month_name = labels[max_month_idx]
+
+        diff = last_month_total - current_month_total
+
+        # 1. 趣味の比率が高い場合（現状肯定＋未来への選択）
+        if hobby_ratio > 30:
+            advice = (
+               f"支出の {round(hobby_ratio)}% が趣味に充てられてます。" 
+               f"趣味を楽しみつつ、未来の自分へ『自由な時間』を贈るつもりで、来月は趣味以外の項目を3,000 だけ意識して抑える計画を立ててみましょう。"
+            )
+
+
+        # 2. 節約に成功している場合（成功も言語化＋モチベーション維持）
+        elif monthly_ratio <= -5:
+            advice = (
+                 f"先月より支出を {abs(monthly_ratio)}% もカットできました！素晴らしい家計管理スキルです。 "
+                 f"この浮いた{diff:,}円は、自分への『ご褒美予算』として半分を使い、残りを『将来の備え』としてストックする習慣を作ると、管理がもっと楽しくなりますよ。"
+            )
+
+        # 3. 支出が増えた場合（現状分析＋優しい改善案）
+        elif monthly_ratio > 10:
+            advice = (
+                 f"先月より支出が {monthly_ratio}% 増えています。{max_month_name}は少し特別な出費が重なったのかもしれません。"
+                 f"無理に削ろうとせず、まずは今週の『コンビニ利用』や『ついで買い』を一度だけパスしてみましょう。その一歩が良く月の安心に繋がります。"
+            )
+
+        # 4. 非常に安定している場合（スキルの評価＋長期ビジョン）
+        elif abs(monthly_ratio) <= 2:
+            advice = (
+                 f"驚くほど安定した家計です。自分の生活を完璧のコントロールできている証拠ですね。"
+                 f"今は完璧な状態です。次は1年後に叶えたい旅行や大きな買い物のために、毎月一定額積み立て始めてみませんか？"
+            )
+
+        # 5. データがまだ少ない、または標準的な場合
+        else:
+            advice = (
+                 f"非常にバランスの良い状態を維持しています。日々の記録、 お疲れ様です。"
+                 f"現状に自信を持ってください！これからは『お金を使わずに楽しめること』を一つずつ見つけてリスト化してみましょう。支出を増やさず満足度を上げる習慣が、未来のあなたをより自由にします。" 
+            )
+        annual_savings = sum(totals[-12:]) if len(totals) >= 12 else sum(totals)
+    
+        return render_template('analysis.html',
+                               labels=json.dumps(labels),
+                               totals=json.dumps(totals),
+                               # ここから追加
+                               foods=json.dumps(foods),
+                               transports=json.dumps(transports),
+                               hobbies=json.dumps(hobbies),
+                               others=json.dumps(others),
+
+                               sim_data=json.dumps(sim_data),
+                               sim_labels=json.dumps(sim_labels),
+                               duration_years=duration_years,
+                               avg_expense_display=avg_expense_display,
+                               annual_savings=annual_savings,
+                               monthly_ratio=monthly_ratio,
+                               advice=advice)
+                               
+
+    
+    except Exception as e:
+ 
+       return f"エラーが発生しました: {e}"
+
+if __name__ == '__main__':
+   app.run(host='0.0.0.0', port=5000, debug=True) # debug=Trueにする
